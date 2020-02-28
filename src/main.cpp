@@ -1,7 +1,6 @@
-#include "line_extract.h"
-#include "image_process.h"
-#include "reconstruction.h"
-#include "LineExtractor.h"
+#include "LineExtract.h"
+#include "ImageProcess.h"
+#include "Reconstruction.h"
 
 string src_image_path = "E:\\BaiduNetdiskDownload\\RecoverStruct\\InputData\\RawImage\\*.png"; //原始图片的路径
 string IntrinsicsPath_l = "E:\\BaiduNetdiskDownload\\RecoverStruct\\InputData\\camera_para\\out_camera_data_190530L.yml"; //相机参数

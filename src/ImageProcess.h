@@ -1,7 +1,7 @@
 #pragma once
 
-#include "head.h"
-#include "reconstruction.h"
+#include "Head.h"
+#include "Reconstruction.h"
 
 class ImageProcess
 {

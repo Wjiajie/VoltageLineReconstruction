@@ -1,4 +1,4 @@
-﻿#include "line_extract.h"
+﻿#include "LineExtract.h"
 
 #define outlier_threshold 3 //二值化的参数
 #define init_point_row 10 //初始化的行数

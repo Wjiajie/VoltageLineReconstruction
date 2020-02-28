@@ -1,4 +1,4 @@
-#include "image_process.h"
+#include "ImageProcess.h"
 
 //×ª»»³É»Ò¶ÈÍ¼
 void ImageProcess::rgb2gray(Mat src , Mat & dst)

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "head.h"
+#include "Head.h"
 
 #define IMG_WIDTH 4096
 #define IMG_HEIGHT 3000

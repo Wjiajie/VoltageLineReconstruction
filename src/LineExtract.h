@@ -1,6 +1,6 @@
 #pragma once
 
-#include "head.h"
+#include "Head.h"
 
 
 class LineExtract
