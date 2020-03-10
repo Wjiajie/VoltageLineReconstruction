@@ -5,9 +5,14 @@
 
 #define init_point_row 11 //初始化的行数
 #define vector_template_size 100
-#define MATCH_THRESHOLD 0.05
-#define MAX_DEPTH 100
+
+#define MATCH_THRESHOLD 1 //对极线点匹配最小阈值
+#define DISTANCE_THRESHOLD 1  //点云匹配距离阈值
+
+#define MAX_DEPTH 100 //点云滤波参数
 #define MIN_DEPTH 60
+
+#define TRIM_DISTANCE 0.5 //截断图像，终止点找的不好
 
 void Reconstruction::pose_estimation_2d2d(vector<Point2f> points1, vector<Point2f> points2, vector<Point2f> match)
 {
@@ -20,7 +25,7 @@ void Reconstruction::pose_estimation_2d2d(vector<Point2f> points1, vector<Point2
 	Mat fundamental_matrix;
 	vector<uchar> m_RANSACStatus;
 	fundamental_matrix = findFundamentalMat(points2, points1, m_RANSACStatus, FM_RANSAC);
-	cout << "opencv 算的基础矩阵F： " << endl << fundamental_matrix << endl;
+	std::cout << "opencv 算的基础矩阵F： " << endl << fundamental_matrix << endl;
 
 	/*Mat image_l = imread(image_path_l);
 	Mat image_r = imread(image_path_r);
@@ -36,7 +41,7 @@ void Reconstruction::pose_estimation_2d2d(vector<Point2f> points1, vector<Point2
 		}
 	}
 
-	cout << "total size: " << size << " F  OutlinerCount" << OutlinerCount << endl;
+	std::cout << "total size: " << size << " F  OutlinerCount" << OutlinerCount << endl;
 
 
 	////计算误差
@@ -58,7 +63,7 @@ void Reconstruction::pose_estimation_2d2d(vector<Point2f> points1, vector<Point2
 
 	Mat essential_matrix = K_l1.t() * fundamental_matrix * K_r1;
 
-	cout << "本质矩阵E: " << endl << essential_matrix << endl;
+	std::cout << "本质矩阵E: " << endl << essential_matrix << endl;
 
 
 	Mat R, t;
@@ -67,8 +72,8 @@ void Reconstruction::pose_estimation_2d2d(vector<Point2f> points1, vector<Point2
 	recoverPose(essential_matrix, points2, points1, K_l1, R, t);
 
 
-	cout << "R : " << endl << R << endl;
-	cout << "t : " << endl << t << endl;
+	std::cout << "R : " << endl << R << endl;
+	std::cout << "t : " << endl << t << endl;
 
 
 	//利用 R,t计算 F
@@ -79,7 +84,7 @@ void Reconstruction::pose_estimation_2d2d(vector<Point2f> points1, vector<Point2
 		t.at<double>(2, 0), 0, -t.at<double>(0, 0),
 		-t.at<double>(1.0), t.at<double>(0, 0), 0);
 
-	cout << "t^R=" << endl << t_x * R << endl;
+	std::cout << "t^R=" << endl << t_x * R << endl;
 
 	cv::Mat mat;
 	recoverPose(essential_matrix, points2, points1, K_l1, R, t, 99999, cv::noArray(), mat);
@@ -95,7 +100,7 @@ void Reconstruction::solve_pnp_2d_3d_ceres(string ctrp_path)
 
 void Reconstruction::CalculateStructure_Init_DLT(std::vector<View> view, std::vector<Observation> obs , vector<Structure> & P )
 {
-	cout << "START INIT POINTCLOUD" << endl;
+	std::cout << "START INIT POINTCLOUD" << endl;
 	for (int i = 0; i < 2; ++i)
 	{
 		for (int j = 0; j < obs.size(); j++)
@@ -138,12 +143,12 @@ void Reconstruction::CalculateStructure_Init_DLT(std::vector<View> view, std::ve
 				P.emplace_back(Structure(X_init, i*obs.size() + j, true));
 		}
 	}
-	cout << "FINISH INIT POINTCLOUD" << endl;
+	std::cout << "FINISH INIT POINTCLOUD" << endl;
 }
 
 void Reconstruction::CalculateStructure_Ceres(std::vector<View> view, std::vector<Observation> obs, vector<Structure> & output_struct)
 {
-	cout << "SATRT  BA" << endl;
+	std::cout << "SATRT  BA" << endl;
 	ceres::Problem problem;
 	ceres::LossFunction* lossFunc = new ceres::HuberLoss(2.0f);
 
@@ -175,7 +180,7 @@ void Reconstruction::CalculateStructure_Ceres(std::vector<View> view, std::vecto
 	ceres::Solve(options, &problem, &summary);
 	std::cout << summary.FullReport() << "\n";
 
-	cout << "FINISH CERES BA" << endl;;
+	std::cout << "FINISH CERES BA" << endl;;
 }
 
 void Reconstruction::DrawEpiLines(const Mat& img_1, const Mat& img_2, vector<Point2f>points1, vector<Point2f>points2, cv::Mat F,string save_path)
@@ -196,7 +201,7 @@ void Reconstruction::DrawEpiLines(const Mat& img_1, const Mat& img_2, vector<Poi
 	}
 	else
 	{
-		cout << "unknow img type\n" << endl;
+		std::cout << "unknow img type\n" << endl;
 		exit(0);
 	}
 
@@ -217,15 +222,18 @@ void Reconstruction::DrawEpiLines(const Mat& img_1, const Mat& img_2, vector<Poi
 void Reconstruction::LinePointInit(Mat points_source, Mat points_target, vector<LinePoint> &source_points, vector<LinePoint> & target_points)
 {
 	//为源图和目标图创建电线的索引，每个点都找到归属的电线id
-	CreateLineHash(points_source, source_points);
-	CreateLineHash(points_target, target_points);		
+	/*CreateLineHash(points_source, source_points);
+	CreateLineHash(points_target, target_points);	*/	
+
+	CreateLineHashDelectly(points_source, source_points);
+	CreateLineHashDelectly(points_target, target_points);
 }
 
 //x2.t()*F*x1 == 0  x1:points1  , x2:points2
 void Reconstruction::FindMatchPoint(vector<LinePoint> &source_points, vector<LinePoint> & target_points, vector<LinePoint> & feature_source, vector<LinePoint> & feature_target, vector<Point2f> & match_s_t , Mat F_s_2_t,bool is_create_match_file /*, Mat F_t_2_s*/)
 {
-	cout << "START FIND MATCH POINT" << endl;
-	vector<Vec<float, 3>> epilines_target, epilines_source;
+	std::cout << "START FIND MATCH POINT" << endl;
+	vector<Vec<float, 3>> epilines_target ;
 	vector<Point2f> points_source, points_target;
 	for (int i = 0; i < source_points.size(); ++i)
 	{
@@ -283,16 +291,16 @@ void Reconstruction::FindMatchPoint(vector<LinePoint> &source_points, vector<Lin
 			}
 		}
 		if (i % 500 == 0)
-			cout << "find matched :: " << (float)(1.0*i/ source_points.size()) << endl;
+			std::cout << "find matched :: " << (float)(1.0*i/ source_points.size()) << endl;
 		}
-		cout << "feature_source.size()" << feature_source.size() << endl;
-		cout << "feature_target.size()" << feature_target.size() << endl;
+		std::cout << "feature_source.size()" << feature_source.size() << endl;
+		std::cout << "feature_target.size()" << feature_target.size() << endl;
 		
 	}
 
 	else
 	{
-		for (int i = 0; i < source_points.size(); i++)
+		for (int i = 0; i < source_points.size()/2; i++)
 		{		
 			int y_begin, y_end;
 			if (epilines_target[i][1] != 0)
@@ -305,14 +313,14 @@ void Reconstruction::FindMatchPoint(vector<LinePoint> &source_points, vector<Lin
 				y_begin = 0;
 				y_end = IMAGEH;
 			}
-			/*cout << "y_begin : " << y_begin << "y_end : " << y_end << endl;*/
-			for (int j = 0; j < target_points.size(); ++j)
+			/*std::cout << "y_begin : " << y_begin << "y_end : " << y_end << endl;*/
+			for (int j = 0; j < target_points.size()/2; ++j)
 			{
 
 				if (!target_points[j].is_matched && y_begin <= target_points[j].point.y && target_points[j].point.y <= y_end)
 				{
-					//cout << epiline[0] * target_points[i].x + epiline[1] * target_points[i].y + epiline[2] << endl;
-					if (abs(epilines_target[i][0] * target_points[j].point.x + epilines_target[i][1] * target_points[j].point.y + epilines_target[i][2]) < 1)
+					//std::cout << epiline[0] * target_points[i].x + epiline[1] * target_points[i].y + epiline[2] << endl;
+					if (abs(epilines_target[i][0] * target_points[j].point.x + epilines_target[i][1] * target_points[j].point.y + epilines_target[i][2]) < MATCH_THRESHOLD)
 					{
 						if (source_points[i].line_id1 == target_points[j].line_id1 || source_points[i].line_id1 == target_points[j].line_id2 || source_points[i].line_id2 == target_points[j].line_id1 || source_points[i].line_id2 == target_points[j].line_id2)
 						{
@@ -323,7 +331,7 @@ void Reconstruction::FindMatchPoint(vector<LinePoint> &source_points, vector<Lin
 				}
 			}
 			if (i % 500 == 0)
-				cout << "find matched :: " << (float)(1.0*i / source_points.size()) << endl;
+				std::cout << "find matched :: " << (float)(1.0*i / source_points.size()) << endl;
 		}
 
 		for (int i = 0; i < source_points.size(); ++i)
@@ -335,13 +343,237 @@ void Reconstruction::FindMatchPoint(vector<LinePoint> &source_points, vector<Lin
 			feature_target.emplace_back(target_points[i]);
 		}
 		
-		cout << "feature_source.size()" << feature_source.size() << endl;
-		cout << "feature_target.size()" << feature_target.size() << endl;
+		std::cout << "feature_source.size()" << feature_source.size() << endl;
+		std::cout << "feature_target.size()" << feature_target.size() << endl;
 	}
+}
+
+void Reconstruction::FindMatchPointByProjection(vector<LinePoint> &source_points, vector<LinePoint> & target_points, vector<LinePoint> source_points_center, vector<LinePoint> target_points_center ,vector<LinePoint> & feature_source, vector<LinePoint> & feature_target, vector<Point2f> & match_s_t, Mat F_s_2_t, vector<View>  view, bool is_create_match_file /*, Mat F_t_2_s*/)
+{
+	std::cout << "START FIND MATCH POINT" << endl;
+	Eigen::Matrix<double, 3, 4> P1, P2;
+
+	P1.block(0, 0, 3, 3) = view[0].rotation;
+	P1.block(0, 3, 3, 1) = -view[0].rotation * view[0].center;
+	P1 = view[0].K * P1;
+
+	P2.block(0, 0, 3, 3) = view[1].rotation;
+	P2.block(0, 3, 3, 1) = -view[1].rotation * view[1].center;
+	P2 = view[1].K * P2;
+
+
+	vector<Vec<float, 3>> epilines_target, epilines_target_center;
+	vector<Point2f> points_source, points_target, points_source_center, points_target_center;
+	for (int i = 0; i < source_points.size(); ++i)
+	{
+		points_source.push_back(Point2f(source_points[i].point.x, source_points[i].point.y));
+	}
+	for (int i = 0; i < target_points.size(); ++i)
+	{
+		points_target.push_back(Point2f(target_points[i].point.x, target_points[i].point.y));
+	}
+	for (int i = 0; i < source_points_center.size(); ++i)
+	{
+		points_source_center.push_back(Point2f(source_points_center[i].point.x, source_points_center[i].point.y));
+	}
+	for (int i = 0; i < target_points_center.size(); ++i)
+	{
+		points_target_center.push_back(Point2f(target_points_center[i].point.x, target_points_center[i].point.y));
+	}
+
+
+
+	//Epilines = F_s_2_t * p , p:points_source
+	computeCorrespondEpilines(points_source, 1, F_s_2_t, epilines_target);//计算对应点的外极线epilines是一个三元组(a,b,c)，表示点在另一视图中对应的外极线ax+by+c=0;
+														//将图片转换为RGB图，画图的时候外极线用彩色绘制
+	//Epilines = F_s_2_t * p , p:points_source
+	computeCorrespondEpilines(points_source_center, 1, F_s_2_t, epilines_target_center);//计算对应点的外极线epilines是一个三元组(a,b,c)，表示点在另一视图中对应的外极线ax+by+c=0;
+														//将图片转换为RGB图，画图的时候外极线用彩色绘制
+
+			
+#pragma omp parallel for  
+	for (int i = 0; i < source_points.size(); i++)
+	{
+		int y_begin, y_end;
+		if (epilines_target[i][1] != 0)
+		{
+			y_begin = ((-(epilines_target[i][2]) / epilines_target[i][1]) >= 0 ? (-(epilines_target[i][2]) / epilines_target[i][1]) : 0);
+			y_end = ((-(epilines_target[i][0] * IMAGEW + epilines_target[i][2]) / epilines_target[i][1]) <= IMAGEH ? (-(epilines_target[i][0] * IMAGEW + epilines_target[i][2]) / epilines_target[i][1]) : IMAGEH);
+		}
+		else
+		{
+			y_begin = 0;
+			y_end = IMAGEH;
+		}
+
+		//找到该点与源图中心线哪一点最近，求得中心线最近点的3D点
+		int min_x_distance = 9999;
+		int min_x_index = -1;
+		int search_start_index = 0; //为了使用多线程，将这个全局变量起到局部变量，同时下面的循环从0开始而不是从search_start_index开始
+
+
+		for (int j = 0; j < points_source_center.size(); ++j)
+		{
+			if (points_source[i].y == points_source_center[j].y)
+			{
+				if (abs(points_source[i].x - points_source_center[j].x) < min_x_distance)
+				{
+					min_x_distance = abs(points_source[i].x - points_source_center[j].x);
+					min_x_index = points_source_center[j].x;
+					search_start_index = j;
+				}
+			}
+		}
+
+		//std::cout << "search_start_index" << search_start_index << endl;
+		//std::cout << "points_source[i] : " << points_source[i] << "   " << min_x_index << "  " << points_source[i].y <<"  "<< points_source_center[search_start_index].x<<"  "<< points_source_center[search_start_index].y<< endl;
+		//记录该中心点的坐标
+		Eigen::Vector2d p_s = Eigen::Vector2d(min_x_index, points_source[i].y);
+		Eigen::Vector2d p_t = Eigen::Vector2d(0, 0);
+		//现在在目标中心线上找出对应点
+		bool is_valid_value = false;
+		for (int j = 0; j < target_points_center.size(); ++j)
+		{
+
+			if (!target_points_center[j].is_matched && y_begin <= target_points_center[j].point.y && target_points_center[j].point.y <= y_end)
+			{
+
+				if (abs(epilines_target_center[search_start_index][0] * target_points_center[j].point.x + epilines_target_center[search_start_index][1] * target_points_center[j].point.y + epilines_target_center[search_start_index][2]) < MATCH_THRESHOLD)
+				{
+
+					if (source_points_center[search_start_index].line_id1 == target_points_center[j].line_id1)
+					{
+						p_t = Eigen::Vector2d(target_points_center[j].point.x, target_points_center[j].point.y);
+						is_valid_value = true;
+						//std::cout << "test pt" << p_t << endl;
+						break;
+					}
+				}
+			}
+		}
+
+		if (is_valid_value)
+		{
+			Eigen::Vector3d X_center;
+			Eigen::Matrix<double, 4, 4> A;
+			A.block(0, 0, 1, 4) =
+				(p_s.x()) * P1.row(2) - P1.row(0);
+			A.block(1, 0, 1, 4) =
+				(p_s.y()) * P1.row(2) - P1.row(1);
+			A.block(2, 0, 1, 4) =
+				(p_t.x()) * P2.row(2) - P2.row(0);
+			A.block(3, 0, 1, 4) =
+				(p_t.y()) * P2.row(2) - P2.row(1);
+
+			Eigen::JacobiSVD<Eigen::MatrixXd> svd(A, Eigen::ComputeThinV);
+			//求得中心线对应的3D点
+			Eigen::Vector4d X_ = svd.matrixV().col(3);
+			X_center << X_.x() / X_.w(), X_.y() / X_.w(), X_.z() / X_.w();
+			//std::cout << "X_center坐标是： " << X_center << endl;
+			//std::cout << "源点坐标是： " << points_source[i] << " 中心点坐标是： " << min_x_index << " ," << points_source[i].y << endl;
+
+			//找到中心点的3D坐标后，利用该3D点筛选匹配点
+
+			Eigen::Vector2d p_s_c = Eigen::Vector2d(source_points[i].point.x, source_points[i].point.y);//原图像中的待匹配点
+			double min_point_distance = 99999.0;
+			int min_point_index = -1;
+			Eigen::Vector3d min_X_candidate;
+
+			for (int j = 0; j < target_points.size(); ++j)
+			{
+
+				if (!target_points[j].is_matched && y_begin <= target_points[j].point.y && target_points[j].point.y <= y_end)
+				{
+					//std::cout << epiline[0] * target_points[i].x + epiline[1] * target_points[i].y + epiline[2] << endl;
+					if (abs(epilines_target[i][0] * target_points[j].point.x + epilines_target[i][1] * target_points[j].point.y + epilines_target[i][2]) < MATCH_THRESHOLD)
+					{
+						//生成3D候选点，然后选择与中心点最近的候选点作为匹配点
+						Eigen::Vector3d X_candidate;
+						Eigen::Matrix<double, 4, 4> A_c;
+						Eigen::Vector2d p_t_c = Eigen::Vector2d(target_points[j].point.x, target_points[j].point.y);//目标图像中的候选匹配点
+						A_c.block(0, 0, 1, 4) =
+							(p_s_c.x()) * P1.row(2) - P1.row(0);
+						A_c.block(1, 0, 1, 4) =
+							(p_s_c.y()) * P1.row(2) - P1.row(1);
+						A_c.block(2, 0, 1, 4) =
+							(p_t_c.x()) * P2.row(2) - P2.row(0);
+						A_c.block(3, 0, 1, 4) =
+							(p_t_c.y()) * P2.row(2) - P2.row(1);
+
+						Eigen::JacobiSVD<Eigen::MatrixXd> svd(A_c, Eigen::ComputeThinV);
+						//求得中心线对应的3D点
+						Eigen::Vector4d X_c_ = svd.matrixV().col(3);
+						X_candidate << X_c_.x() / X_c_.w(), X_c_.y() / X_c_.w(), X_c_.z() / X_c_.w();
+						//cout << "X_candidate is: " << X_candidate << endl;
+
+						double current_distance = pow((X_candidate.x() - X_center.x()), 2) + pow((X_candidate.y() - X_center.y()), 2) + pow((X_candidate.z() - X_center.z()), 2);
+						if (current_distance < min_point_distance)
+						{
+							min_point_distance = current_distance;
+							min_point_index = j;
+							min_X_candidate = X_candidate;
+						}
+					}
+				}
+			}
+			//cout << "min_point_distance is" << min_point_distance << endl;
+			//cout << " min_X_candidate is:  " << min_X_candidate << endl;
+
+			//找到有效的匹配点了
+
+			if (is_create_match_file)
+			{
+
+#pragma omp critical  //同一时间该代码只能被单一线程执行
+				{
+					if (min_point_index != -1 && min_point_distance < DISTANCE_THRESHOLD)
+					{
+
+						match_s_t.push_back(Point2i(i, min_point_index));
+					}
+				}
+			}
+
+			else
+			{
+#pragma omp critical  //同一时间该代码只能被单一线程执行
+				{
+					//如果不创建match file 默认feature file的点按顺序对应匹配
+					if (min_point_index != -1 && min_point_distance < DISTANCE_THRESHOLD)
+					{
+						feature_source.emplace_back(source_points[i]);
+						feature_target.emplace_back(target_points[min_point_index]);
+					}
+				}
+			}
+		}
+
+		if (i % 500 == 0)
+			std::cout << "find matched :: " << (float)(1.0*i / source_points.size()) << endl;
+	}
+
+		std::cout << "match_s_t size: " << match_s_t.size() << endl;
+
+		if (is_create_match_file)
+		{
+			for (int i = 0; i < source_points.size(); ++i)
+			{
+				feature_source.emplace_back(source_points[i]);
+			}
+			for (int i = 0; i < target_points.size(); ++i)
+			{
+				feature_target.emplace_back(target_points[i]);
+			}
+		}
+
+		std::cout << "feature_source.size()" << feature_source.size() << endl;
+		std::cout << "feature_target.size()" << feature_target.size() << endl;
+	
 }
 
 void Reconstruction::EraseInvalidStructure(std::vector<Structure> & structure , std::vector<Observation>& observation)
 {	
+	std::cout << "START REASE INVALID STRUCTURE" << endl;
 	std::vector<Structure>::iterator iter = structure.begin();
 	for (std::vector<Observation>::iterator iter_o = observation.begin(); iter_o != observation.end();)
 	{
@@ -380,12 +612,12 @@ void Reconstruction::SavePLYFile_PointCloud(std::string filePath, std::vector<St
 	ofstream ofs(filePath);
 	if (!ofs)
 	{
-		cout << "err in create ply!" << endl;;
+		std::cout << "err in create ply!" << endl;;
 		return;
 	}
 	else
 	{
-		cout << "BEGIN SAVE PLY" << endl;
+		std::cout << "BEGIN SAVE PLY" << endl;
 		ofs << "ply " << endl << "format ascii 1.0" << endl;
 		//ofs << "element vertex " << this->structures.size() + this->Views.size() << endl;//old
 		ofs << "element vertex " << structure.size()  << endl;
@@ -404,7 +636,7 @@ void Reconstruction::SavePLYFile_PointCloud(std::string filePath, std::vector<St
 	}
 	ofs.close();
 	ofs.flush();
-	cout << "FINISH SAVE PLY" << endl;
+	std::cout << "FINISH SAVE PLY" << endl;
 }
 
 void FindCorrespondPointInEpilines(LinePoint source_point, vector<LinePoint>target_points, vector<Point2f> & match_source, vector<Point2f> & match_target, Vec<float, 3> epiline)
@@ -421,13 +653,13 @@ void FindCorrespondPointInEpilines(LinePoint source_point, vector<LinePoint>targ
 		y_begin = 0;
 		y_end = IMAGEH;
 	}
-	//cout << "y_begin : " << y_begin << "y_end : " << y_end << endl;
+	//std::cout << "y_begin : " << y_begin << "y_end : " << y_end << endl;
 	for (int i = 0; i < target_points.size(); ++i)
 	{
 		
 		if (y_begin <= target_points[i].point.y && target_points[i].point.y <= y_end)
 		{		
-			//cout << epiline[0] * target_points[i].x + epiline[1] * target_points[i].y + epiline[2] << endl;
+			//std::cout << epiline[0] * target_points[i].x + epiline[1] * target_points[i].y + epiline[2] << endl;
 			if (abs(epiline[0] * target_points[i].point.x + epiline[1] * target_points[i].point.y + epiline[2]) < 0.3)
 			{
 				if (source_point.line_id1 == target_points[i].line_id1 || source_point.line_id1 == target_points[i].line_id2 || source_point.line_id2 == target_points[i].line_id1 || source_point.line_id2 == target_points[i].line_id2)
@@ -484,7 +716,7 @@ void FindMatchHash(vector<float> x_index_l, Mat points_source,vector<LinePoint> 
 
 	//else
 	//{
-	//	cout << "数据不符合预设" << endl;
+	//	std::cout << "数据不符合预设" << endl;
 	//}
 
 
@@ -997,14 +1229,14 @@ void FindMatchHash(vector<float> x_index_l, Mat points_source,vector<LinePoint> 
 
 	else
 	{
-		cout << "输入数据不符合预设" << endl;
-		cout << "x_index_l.size()" << x_index_l.size() << endl;
+		std::cout << "输入数据不符合预设" << endl;
+		std::cout << "x_index_l.size()" << x_index_l.size() << endl;
 	}
 }
 
 void CreateLineHash(Mat points_source, vector<LinePoint> & source_points)
 {
-	cout << "INIT LINE POINT" << endl;
+	std::cout << "INIT LINE POINT" << endl;
 	vector<float> x_index, x_index_l, x_index_r;
 	for (int j = 0; j < points_source.cols; ++j)
 	{
@@ -1061,6 +1293,53 @@ void CreateLineHash(Mat points_source, vector<LinePoint> & source_points)
 
 			else if (point_line_right[j].point.y > i)
 				break;
+		}
+	}
+}
+
+void CreateLineHashDelectly(Mat points_source, vector<LinePoint> & source_points)
+{
+	/*for (int i = 0; i < points_source.rows *TRIM_DISTANCE; ++i)
+	{
+		int line_count = 0;		
+		for (int j = 0; j < points_source.cols ; ++j)
+		{
+			if (*(points_source.data + i * points_source.step[0] + j * points_source.step[1]) != 0)
+			{
+				source_points.emplace_back(LinePoint(Point3f(j, i, 1), i*points_source.cols + j, line_count + 1, line_count + 1));
+				line_count++;
+			}
+		}		
+	}*/
+
+	//按照直线顺序保存
+	int line_count = 0;
+	for (int i = 0; i < points_source.rows *TRIM_DISTANCE; ++i)
+	{
+		int max_line_count = 0;
+		for (int j = 0; j < points_source.cols; ++j)
+		{
+			if (*(points_source.data + i * points_source.step[0] + j * points_source.step[1]) != 0 )
+			{
+				max_line_count++;				
+			}
+		}
+		if(line_count< max_line_count)
+			line_count = max_line_count;	
+	}
+
+	for (int i = 0; i < line_count; ++i)
+	{
+		for (int j = 0; j < points_source.rows *TRIM_DISTANCE; ++j)
+		{
+			int current_count = 0;
+			for (int k = 0; k < points_source.cols; ++k)
+			{
+				if (*(points_source.data + j * points_source.step[0] + k * points_source.step[1]) != 0 && current_count++ == i)
+				{
+					source_points.emplace_back(LinePoint(Point3f(k, j, 1), j*points_source.cols + k, i + 1, i + 1));
+				}
+			}
 		}
 	}
 }

@@ -9,6 +9,56 @@ string save_path = "E:\\BaiduNetdiskDownload\\RecoverStruct\\OutputData"; //输出
 string pc_init_path = "E:\\BaiduNetdiskDownload\\RecoverStruct\\OutputData\\Init_dlt_cloud.ply"; //保存的点云
 string pc_final_path = "E:\\BaiduNetdiskDownload\\RecoverStruct\\OutputData\\ceres_cloud.ply";
 
+#define search_distance  10
+#define threshold 5   //越大越严格
+#define init_point_row 10 //初始化的行数
+
+void FindCenterPointInFinalLine(Mat mask, Mat & mask_center)
+{
+	Mat se = getStructuringElement(MORPH_RECT, Size(2, 2));
+	Mat se1 = getStructuringElement(MORPH_RECT, Size(22, 22));
+	Mat se2 = getStructuringElement(MORPH_RECT, Size(10, 10));
+	Mat dst = Mat::zeros(mask.size(), CV_8UC1);
+	//erode(mask, dst, se);
+	dilate(mask, dst, se1);
+	//erode(dst, dst, se2);
+	//imwrite("E:\\BaiduNetdiskDownload\\shuangmushuju\\dalianwafangdian\\test\\dst.png", dst);
+	
+	vector<int> vec_first, vec_last;
+
+	for (int i = init_point_row; i < dst.rows; ++i)
+	{
+		for (int j = 0; j < dst.cols - 1; ++j)
+		{
+
+			if (*(dst.data + i * dst.step[0] + j * dst.step[1]) == 0 && *(dst.data + i * dst.step[0] + (j + 1)*dst.step[1]) == 255)
+			{
+				vec_first.push_back(j + 1);
+			}
+			if (*(dst.data + i * dst.step[0] + j * dst.step[1]) == 255 && *(dst.data + i * dst.step[0] + (j + 1)*dst.step[1]) == 0)
+			{
+				vec_last.push_back(j);
+
+			}
+		}
+
+		if (vec_first.size() == vec_last.size())
+		{
+			for (int k = 0; k < vec_first.size(); ++k)
+			{
+				int index = ceil((vec_first[k] + vec_last[k]) / 2.f);
+				*(mask_center.data + i * mask_center.step[0] + index * mask_center.step[1]) = 255;
+
+			}
+
+		}
+
+		vec_first.clear();
+		vec_last.clear();
+	}
+
+}
+
 
 int main()
 {
@@ -24,64 +74,32 @@ int main()
 	image_process.ImageDedistortion(src_image, undistort_image, IntrinsicsPath);
 	
 	
-	vector<Mat> extract_line;
+	vector<Mat> extract_line, extract_center_line;
 	for (int i = 0; i < undistort_image.size(); ++i)
 	{
-		Mat gray_image;
+		Mat gray_image,gray_image_sharpen;
 		image_process.rgb2gray(undistort_image[i], gray_image);
-		//image_process.Sharpen(gray_image, gray_image_sharpen); //可调整，图像对比度低的时候加上锐化效果会好些
+		image_process.Sharpen(gray_image, gray_image_sharpen); //可调整，图像对比度低的时候加上锐化效果会好些
 		//找到线头
 		vector<Point2i> init_point;
 		LineExtract line;
 		line.InitLineHead(gray_image, init_point);	
 		//提取线
 		Mat final_line = Mat::zeros(gray_image.rows, gray_image.cols, CV_8UC1);
-		line.ExtractLine(gray_image, init_point, final_line);
+		line.ExtractLine(gray_image_sharpen, init_point, final_line);
+
+		//提中心线
+		Mat center_point = Mat::zeros(undistort_image[i].rows, undistort_image[i].cols, CV_8UC1);
+		// 提取电力线的质心
+		FindCenterPointInFinalLine(final_line, center_point);
+		
 		extract_line.emplace_back(final_line);
+		extract_center_line.emplace_back(center_point);
 	}
 
 		
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	
-	//寻找直线匹配点
-	
-	Mat line_l, line_m;
-	Mat image_l, image_m;
 
-	line_l = extract_line[0].clone();
-	line_m = extract_line[1].clone();
-	image_l = undistort_image[0].clone();
-	image_m = undistort_image[1].clone();
-
-	
-	//F，R,t 由一些传统的流程算的；已知2d对2d点，由对极约束得到。2d对3d，由pnp得到；有3d对3d点，由icp得到。
-	//Reconstruction::pose_estimation_2d2d()可以算出F,R,t
-	Mat F_l_2_m_mat = (Mat_<double>(3, 3) << 1.56085e-09, 1.90842e-07, -0.000659478,
-		-2.36214e-07, 6.59792e-08, 0.0100108,
-		0.00070144, -0.0101018, 1);
-
-		
-	Reconstruction rec;
-
-	//寻找电线匹配关系	
-	vector<LinePoint> source_points, target_points;
-	rec.LinePointInit(line_l, line_m, source_points, target_points);
-	vector<LinePoint> feature_l, feature_m;
-	vector<Point2f> match_l_m;
-	rec.FindMatchPoint(source_points, target_points, feature_l, feature_m, match_l_m, F_l_2_m_mat ,true);
-	vector<Point2f> feature_l_2d, feature_m_2d;
-
-	for (int i = 0; i < match_l_m.size(); ++i)
-	{
-		feature_l_2d.push_back(Point2f(feature_l[match_l_m[i].x].point.x, feature_l[match_l_m[i].x].point.y));
-		feature_m_2d.push_back(Point2f(feature_m[match_l_m[i].y].point.x, feature_m[match_l_m[i].y].point.y));
-	}
-	
-	rec.DrawEpiLines(image_l, image_m, feature_l_2d, feature_m_2d, F_l_2_m_mat, save_path);
-	
-	//image_process.SaveFeatureAndMatchFile(feature_l, feature_m, match_l_m, save_path);
-
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	//在已知内外参数情况下重建
 	//F，R,t 由一些传统的流程算的；已知2d对2d点，由对极约束得到。2d对3d，由pnp得到；有3d对3d点，由icp得到。
 	Eigen::Matrix3d R0;
@@ -121,8 +139,65 @@ int main()
 	View view1(R1, c1, K1, distort1);
 
 	vector<View> view{ view0,view1 };
+	
+	//寻找直线匹配点
+	
+	Mat line_l, line_m;
+	Mat center_line_l, center_line_m;
+	Mat image_l, image_m;
 
+	line_l = extract_line[0].clone();
+	line_m = extract_line[1].clone();
+	
 
+	image_l = undistort_image[0].clone();
+	image_m = undistort_image[1].clone();
+
+	center_line_l = extract_center_line[0].clone();
+	center_line_m = extract_center_line[1].clone();
+
+	
+	//F，R,t 由一些传统的流程算的；已知2d对2d点，由对极约束得到。2d对3d，由pnp得到；有3d对3d点，由icp得到。
+	//Reconstruction::pose_estimation_2d2d()可以算出F,R,t
+	//huzhou
+	Mat F_l_2_m_mat = (Mat_<double>(3, 3) << 1.56085e-09, 1.90842e-07, -0.000659478,
+		-2.36214e-07, 6.59792e-08, 0.0100108,
+		0.00070144, -0.0101018, 1);
+
+		
+	Reconstruction rec;
+
+	//寻找电线匹配关系	
+	vector<LinePoint> source_points, target_points;
+	vector<LinePoint> source_points_center, target_points_center;
+	rec.LinePointInit(line_l, line_m, source_points, target_points);
+	rec.LinePointInit(center_line_l, center_line_m, source_points_center, target_points_center);
+	vector<LinePoint> feature_l, feature_m;
+	vector<Point2f> match_l_m;
+	//rec.FindMatchPoint(source_points_center, target_points_center, feature_l, feature_m, match_l_m, F_l_2_m_mat , true);
+	rec.FindMatchPointByProjection(source_points, target_points, source_points_center, target_points_center, feature_l, feature_m, match_l_m, F_l_2_m_mat, view, true);
+	vector<Point2f> feature_l_2d, feature_m_2d;
+
+	for (int i = 0; i < match_l_m.size(); ++i)
+	{
+		feature_l_2d.push_back(Point2f(feature_l[match_l_m[i].x].point.x, feature_l[match_l_m[i].x].point.y));
+		feature_m_2d.push_back(Point2f(feature_m[match_l_m[i].y].point.x, feature_m[match_l_m[i].y].point.y));
+	}
+	
+	rec.DrawEpiLines(image_l, image_m, feature_l_2d, feature_m_2d, F_l_2_m_mat, save_path);
+	
+	//image_process.SaveFeatureAndMatchFile(feature_l, feature_m, match_l_m, save_path);
+
+	/*vector<Point2d> feature_l_by_lineid, feature_m_by_lineid;
+	vector<Point2d> match_l_m_by_lineid;
+	int current_lineid = 0;
+	for (int i = 0; i < match_l_m.size(); ++i)
+	{
+		if(feature_l[i].line_id1)
+	}*/
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	
 	//如果提供feature数据和match数据，直接由下面程序完成重建
 	//仅考虑最简单的情况，即输入是两份特征文件，和对应的匹配文件。多图像匹配不考虑
 	//vector<LinePoint>  feature_s, feature_t;

@@ -194,6 +194,7 @@ public:
 	void CalculateStructure_Ceres(std::vector<View> view, std::vector<Observation> obs, vector<Structure> & output_struct);
 	void DrawEpiLines(const Mat& img_1, const Mat& img_2, vector<Point2f>points1, vector<Point2f>points2, Mat F, string save_path);
 	void FindMatchPoint(vector<LinePoint> &source_points, vector<LinePoint> & target_points, vector<LinePoint> & match1, vector<LinePoint> & match2, vector<Point2f> & match_1_2 ,Mat F_s_2_t , bool is_create_match_file = false/*,Mat F_t_2_s*/);
+	void FindMatchPointByProjection(vector<LinePoint> &source_points, vector<LinePoint> & target_points, vector<LinePoint> source_points_center, vector<LinePoint> target_points_center, vector<LinePoint> & feature_source, vector<LinePoint> & feature_target, vector<Point2f> & match_s_t, Mat F_s_2_t, vector<View>  view, bool is_create_match_file /*, Mat F_t_2_s*/);
 	void LinePointInit(Mat point_source, Mat point_target, vector<LinePoint> & source_points, vector<LinePoint> & target_points);
 	void SavePLYFile_PointCloud(std::string save_path, std::vector<Structure> structure);
 	void EraseInvalidStructure(std::vector<Structure> & structure ,std::vector<Observation>& observation);
@@ -206,3 +207,4 @@ void FindCorrespondPointInEpilines(LinePoint source_point, LinePoint Inspection_
 
 void FindMatchHash(vector<float> x_index_l,Mat points_source, vector<LinePoint> & source_points, int left_size ,bool is_left_side);
 void CreateLineHash(Mat points_source, vector<LinePoint> & source_points);
+void CreateLineHashDelectly(Mat points_source, vector<LinePoint> & source_points);

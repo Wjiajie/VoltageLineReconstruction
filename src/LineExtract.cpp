@@ -10,8 +10,8 @@
 #define end_size 3 //中值模板大小 3*3
 #define end_threshold 1 //中断模板的方差小于该阈值就退出
 #define update_threshold 10 //每隔10格判断是否更新一次 值模板   
-#define value_threshold 5  //图像二值化的阈值 
-#define value_threshold 5  //图像二值化的阈值 
+#define update_template_threshold 5 //每次更新值模板的幅度
+#define value_threshold 5 //图像二值化的阈值 
 #define vector_template_size 100 // 存储正确索引的模板长度
 
 #define end_y_index 1480 // 1480 1390 //undistort_image.rows - vector_template_size - 1
@@ -274,7 +274,7 @@ void LineExtract::ExtractLineSingle(Mat undistort_image, Point2i init_point_inde
 	// 根据后续数据，更新当前的索引模板，判断遇到环的条件，并特殊处理
 	int template_size_vector = vector_template_size;
 
-	for (int i = init_point_row + vector_template_size + 1; i < end_y_index; ++i)
+	for (int i = init_point_row + vector_template_size + 1; i < undistort_image.rows - vector_template_size - 1; ++i)
 	{
 		//定间距减小 索引模板的长度 ，为了让电线曲率更容易改变  可调整
 		if (i % (undistort_image.rows/100) == 0)
@@ -395,7 +395,7 @@ void LineExtract::ExtractLineSingle(Mat undistort_image, Point2i init_point_inde
 		if ((i - (init_point_row + vector_template_size + 1)) % update_threshold == (update_threshold - 1))
 		{
 			int status_sum = 0;
-			for (int j = 0; j < value_threshold; ++j)
+			for (int j = 0; j < update_template_threshold; ++j)
 			{
 				status_sum += abs(status_vector[i - (init_point_row + vector_template_size + 1) - j] - status_vector[i - (init_point_row + vector_template_size + 1) - j - 1]);
 			}
